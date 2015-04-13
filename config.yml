@@ -1,0 +1,11 @@
+---
+debug: true
+ban_prefix_size: 2
+mail: {
+    server: smtp.gmail.com,
+    port: 587,
+    sender: surveyor@home,
+    recipient: xxx,
+    passwd: xxx,
+    active: false
+}
