@@ -34,10 +34,6 @@ class SSHSurveyor
         @auth_log = AuthLogStruct.new(auth_log, 0)
         raise('No auth/secure log file found. Aborting.') if @auth_log.file.nil?
 
-        # Make a roll from the log file if it already exists avoiding the log file
-        # to grow at each startup with the same messages
-        FileUtils.mv(self_log_file, self_log_file+'.'+Time.now.to_s.gsub(/ /, '@')) if File.exists?(self_log_file)
-
         # Start loggers for app. Dump to stdout only in debug mode
         @self_logs = SelfLogs.new(Logger.new(self_log_file), nil)
         @self_logs.stdout = Logger.new(STDOUT) if @cfg['debug']
@@ -48,6 +44,15 @@ class SSHSurveyor
         # when it reaches the maximum threshold (3) the ip is added to the banned
         # addresses and removed from the hash
         @refused = {}
+
+        # If state file exists, reload the until now refused ips avoiding to reparse the file
+        # Otherwise the auth log will be parsed with the risk of missing some intrusion cases
+        # if log has rotated inbetween
+        if File.exists?(state_file)
+            @refused = Psych.load(IO.read(state_file))
+            @auth_log.size = @refused['size']
+            @refused.delete('size')
+        end
 
         # banned is initialized with the entries in hosts.deny and grows each time
         # a refused ip reaches the maximum
@@ -62,11 +67,14 @@ class SSHSurveyor
 
     end
 
+    # Writes a message to script logs
     def trace(msg)
         @self_logs.file.info(msg)
         @self_logs.stdout.info(msg) if @self_logs.stdout
     end
 
+    # Returns the system auth log to parse
+    # Returns a local file name if in debug mode
     def auth_log
         return './auth.log' if @cfg['debug']
 
@@ -75,12 +83,26 @@ class SSHSurveyor
         return nil
     end
 
+    # Returns hosts.deny file name depending on the debug mode
     def hosts_deny
         return @cfg['debug'] ? './hosts.deny' : '/etc/hosts.deny'
     end
 
+    # Returns script log file
     def self_log_file
         return File.join(File.dirname(__FILE__), 'sshsurveyor.log')
+    end
+
+    # Returns state file name
+    def state_file
+        return File.join(File.dirname(__FILE__), 'state.json')
+    end
+
+    # Saves the current refused ips to a json file
+    # Adds a 'size' entry to save the file size at the time the script was stopped
+    def save_state
+        @refused['size'] = @auth_log.size
+        IO.write(state_file, Psych.to_json(@refused))
     end
 
     def send_mail(ip)
@@ -158,11 +180,11 @@ class SSHSurveyor
             trace("Adding #{ip} to refused table, count is now #{@refused[ip]}")
 
             # If over 3 times, the ip is added to hosts.deny, saved in banned and removed from refused
-            if @refused[ip] > 2
+            if @refused[ip] >= @cfg['max_attempts']
                 trace("Adding #{ip} to banned -> deny #{ip_to_ban_size(ip)}")
                 File.open(hosts_deny, 'a') { |file| file.write("sshd: #{ip_to_ban_size(ip)}\n") }
                 @banned << ip_to_ban_size(ip)
-                @refused.delete_if { |k, v| k == ip }
+                @refused.delete(ip)
                 # if @auth_log.size is 0, it means first parsing of file at startup. Don't send mail in this case
                 send_mail(ip) if @cfg['mail']['active'] && @auth_log.size > 0
             end
@@ -178,13 +200,11 @@ class SSHSurveyor
 
         line.match(/sshd\[([0-9]+)\]: /) do |m|
             pid = m.captures.first.to_i
-            if pid == @block.pid
-                @block.lines << m.post_match
-            else
+            unless pid == @block.pid
                 analyze_block unless @block.lines.empty?
                 @block.pid = pid
-                @block.lines << m.post_match
             end
+            @block.lines << m.post_match
         end
     end
 
@@ -201,8 +221,9 @@ class SSHSurveyor
         IO.binread(@auth_log.file).split("\n").each { |line| build_block(line) }
     end
 
-    # Check if the size of the log file changed. In this case it starts
-    # the analyze process from the missing piece of the file or the whole file.
+    # Check if the size of the log file has changed. In this case it starts
+    # the analyze process from the missing piece of the file or the whole file
+    # if the file is smaller, probably due to log rotation.
     def check_log_size
         return if File.size(@auth_log.file) == @auth_log.size
 
@@ -213,21 +234,13 @@ class SSHSurveyor
     end
 
     # Repeatedly check if the log file changed in size
-    # If size changed, it will trigger the analyze of the log
+    # If size has changed, it will trigger the log analysis
     def main_loop
-        Signal.trap("TERM") {
-            # trace("Surveyor shutdown on TERM signal.")
-            exit(0)
-        }
-        # Signal.trap("HUP") { trace("SIGHUP trapped and ignored.") }
+        ['INT', 'TERM'].map { |sig| Signal.trap(sig) { save_state; exit(0) } }
 
-        if @cfg['debug']
+        while true
             check_log_size
-        else
-            while true
-                check_log_size
-                sleep(10)
-            end
+            sleep(@cfg['check_interval'])
         end
     end
 end
