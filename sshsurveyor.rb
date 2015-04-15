@@ -50,8 +50,7 @@ class SSHSurveyor
         # if log has rotated inbetween
         if File.exists?(state_file)
             @refused = Psych.load(IO.read(state_file))
-            @auth_log.size = @refused['size']
-            @refused.delete('size')
+            @auth_log.size = @refused.delete('size')
             trace("Previous state reloaded:")
             @refused.each { |k, v| trace("  IP #{k}: #{v} attempt(s)") }
         end
@@ -66,7 +65,6 @@ class SSHSurveyor
         IO.foreach('/etc/hosts.allow') { |line| @allowed << line.split('sshd:')[1].strip if line.match(/^sshd:/) }
 
         @block = BlockStruct.new(0, [])
-
     end
 
     # Writes a message to script logs
