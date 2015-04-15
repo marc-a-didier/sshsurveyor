@@ -52,6 +52,8 @@ class SSHSurveyor
             @refused = Psych.load(IO.read(state_file))
             @auth_log.size = @refused['size']
             @refused.delete('size')
+            trace("Previous state reloaded:")
+            @refused.each { |k, v| trace("  IP #{k}: #{v} attempt(s)") }
         end
 
         # banned is initialized with the entries in hosts.deny and grows each time
@@ -173,7 +175,7 @@ class SSHSurveyor
             end
             next if is_banned(ip)
 
-            trace("Extracted suspicious IP #{ip} (block [#{@block.pid}])")
+            trace("New attempt from #{ip} (block [#{@block.pid}])")
 
             # Increment the offenses count
             @refused[ip] ? @refused[ip] += count : @refused[ip] = count
