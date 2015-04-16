@@ -159,7 +159,7 @@ class SSHSurveyor
             return
         end
 
-        trace("WARNING: more than 1 IP found in the same block!") if ips.size > 1
+        trace("Warning: more than 1 IP found in the same block!") if ips.size > 1
 
         # Parse each ip (normally only one)
         ips.map do |ip|
@@ -170,11 +170,11 @@ class SSHSurveyor
             end
             next if is_banned(ip)
 
-            trace("New attempt from #{ip} (block [#{@block.pid}])")
+            trace("Detected login attempt from #{ip} (block [#{@block.pid}])")
 
             # Increment the offenses count
             @refused[ip] ? @refused[ip] += count : @refused[ip] = count
-            trace("Adding #{ip} to refused table, count is now #{@refused[ip]}")
+            trace("Updating refused[#{ip}], count is now #{@refused[ip]}")
 
             # If over 3 times, the ip is added to hosts.deny, saved in banned and removed from refused
             if @refused[ip] >= @cfg['max_attempts']
@@ -230,7 +230,7 @@ class SSHSurveyor
     # Repeatedly check if the log file changed in size
     # If size has changed, it will trigger the log analysis
     def main_loop
-        ['INT', 'TERM'].map { |sig| Signal.trap(sig) { save_state; exit(0) } }
+        %w[INT TERM].map { |sig| Signal.trap(sig) { save_state; exit(0) } }
 
         while true
             check_log_size unless File.size(@auth_log.file) == @auth_log.size
