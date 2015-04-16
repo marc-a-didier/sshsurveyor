@@ -118,10 +118,7 @@ class SSHSurveyor
 
     # Returns the ip truncated of its ban_prefix_size lower bytes.
     def ip_to_ban_size(ip)
-        return ip if @cfg['ban_prefix_size'] == 4
-        s = ''
-        ip.split('.')[0..@cfg['ban_prefix_size']-1].map { |b| s << b+'.' }
-        return s
+        return @cfg['ban_prefix_size'] == 4 ? ip : ip.split('.')[0..@cfg['ban_prefix_size']-1].join('.')+'.'
     end
 
     # Check if an ip is already banned or not
@@ -185,8 +182,7 @@ class SSHSurveyor
                 File.open(hosts_deny, 'a') { |file| file.write("sshd: #{ip_to_ban_size(ip)}\n") }
                 @banned << ip_to_ban_size(ip)
                 @refused.delete(ip)
-                # if @auth_log.size is 0, it means first parsing of file at startup. Don't send mail in this case
-                send_mail(ip) if @cfg['mail']['active'] && @auth_log.size > 0
+                send_mail(ip) if @cfg['mail']['active']
             end
         end
 
@@ -225,8 +221,6 @@ class SSHSurveyor
     # the analyze process from the missing piece of the file or the whole file
     # if the file is smaller, probably due to log rotation.
     def check_log_size
-        return if File.size(@auth_log.file) == @auth_log.size
-
         size = File.size(@auth_log.file)
         size > @auth_log.size ? parse_chunk(size-@auth_log.size) : parse_file
         analyze_block unless @block.lines.empty?
@@ -239,7 +233,7 @@ class SSHSurveyor
         ['INT', 'TERM'].map { |sig| Signal.trap(sig) { save_state; exit(0) } }
 
         while true
-            check_log_size
+            check_log_size unless File.size(@auth_log.file) == @auth_log.size
             sleep(@cfg['check_interval'])
         end
     end
