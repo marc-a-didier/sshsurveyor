@@ -55,11 +55,6 @@ class SSHSurveyor
             @refused.each { |k, v| trace("  IP #{k}: #{v} attempt(s)") }
         end
 
-        # banned is initialized with the entries in hosts.deny and grows each time
-        # a refused ip reaches the maximum
-        @banned = []
-        IO.foreach(hosts_deny) { |line| @banned << line.split('sshd:')[1].strip if line.match(/^sshd:/) }
-
         # Keep track of allowed hosts, don't want to ban regular user cause (s)he messed the password...
         @allowed = []
         IO.foreach('/etc/hosts.allow') { |line| @allowed << line.split('sshd:')[1].strip if line.match(/^sshd:/) }
@@ -121,11 +116,6 @@ class SSHSurveyor
         return @cfg['ban_prefix_size'] == 4 ? ip : ip.split('.')[0..@cfg['ban_prefix_size']-1].join('.')+'.'
     end
 
-    # Check if an ip is already banned or not
-    def is_banned(ip)
-        return @banned.detect { |banned| ip.match(banned) || ip_to_ban_size(ip).match(banned) }
-    end
-
     # Check if an ip is in allowed hosts
     def is_allowed(ip)
         return @allowed.detect { |allowed| ip.match(allowed) || ip_to_ban_size(ip).match(allowed) }
@@ -168,7 +158,6 @@ class SSHSurveyor
                 trace("Warning: allowed IP #{ip} failed to authenticate (block [#{@block.pid}])")
                 next
             end
-            next if is_banned(ip)
 
             trace("Detected login attempt from #{ip} (block [#{@block.pid}])")
 
@@ -180,7 +169,6 @@ class SSHSurveyor
             if @refused[ip] >= @cfg['max_attempts']
                 trace("Adding #{ip} to banned -> deny #{ip_to_ban_size(ip)}")
                 File.open(hosts_deny, 'a') { |file| file.write("sshd: #{ip_to_ban_size(ip)}\n") }
-                @banned << ip_to_ban_size(ip)
                 @refused.delete(ip)
                 send_mail(ip) if @cfg['mail']['active']
             end
