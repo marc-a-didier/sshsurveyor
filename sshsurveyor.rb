@@ -60,6 +60,9 @@ class SSHSurveyor
         @banned = []
         IO.foreach(hosts_deny) { |line| @banned << line.split('sshd:')[1].strip if line.match(/^sshd:/) }
 
+        # Cleanup refused if any duplicates between banned and refused
+        @banned.each { |ip| @refused.delete_if { |k, v| k.match(ip) } }
+
         # Keep track of allowed hosts, don't want to ban regular user cause (s)he messed the password...
         @allowed = []
         IO.foreach('/etc/hosts.allow') { |line| @allowed << line.split('sshd:')[1].strip if line.match(/^sshd:/) }
