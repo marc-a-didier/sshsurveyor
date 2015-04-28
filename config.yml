@@ -1,5 +1,5 @@
 ---
-debug: true
+run_mode: prod_debug
 ban_prefix_size: 2
 max_attempts: 3
 check_interval: 10

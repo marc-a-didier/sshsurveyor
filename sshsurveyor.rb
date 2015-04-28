@@ -36,7 +36,7 @@ class SSHSurveyor
 
         # Start loggers for app. Dump to stdout only in debug mode
         @self_logs = SelfLogs.new(Logger.new(self_log_file), nil)
-        @self_logs.stdout = Logger.new(STDOUT) if @cfg['debug']
+        @self_logs.stdout = Logger.new(STDOUT) if @cfg['run_mode'] == 'full_debug'
 
         trace("Started surveying #{@auth_log.file}")
 
@@ -79,7 +79,7 @@ class SSHSurveyor
     # Returns the system auth log to parse
     # Returns a local file name if in debug mode
     def auth_log
-        return './auth.log' if @cfg['debug']
+        return './auth.log' if @cfg['run_mode'] == 'full_debug'
 
         AUTH_LOG_FILES.map { |log_file| return log_file if File.exists?(log_file) }
 
@@ -88,7 +88,7 @@ class SSHSurveyor
 
     # Returns hosts.deny file name depending on the debug mode
     def hosts_deny
-        return @cfg['debug'] ? './hosts.deny' : '/etc/hosts.deny'
+        return @cfg['run_mode'] == 'full_debug' ? './hosts.deny' : '/etc/hosts.deny'
     end
 
     # Returns script log file
@@ -134,8 +134,12 @@ class SSHSurveyor
         return @allowed.detect { |allowed| ip.match(allowed) || ip_to_ban_size(ip).match(allowed) }
     end
 
+    def production_mode?
+        return @cfg['run_mode'] == 'prod'
+    end
+
     def analyze_block
-        if @cfg['debug']
+        unless production_mode?
             trace("Analyzing #{@block.lines.size} line(s) block for pid #{@block.pid}:")
             @block.lines.map { |line| trace("  #{line}") }
         end
@@ -158,6 +162,7 @@ class SSHSurveyor
 
         # We were on a block that's not a threat
         if ips.empty?
+            trace("No matching regex in block, exiting") unless production_mode?
             @block.lines.clear
             return
         end
@@ -171,7 +176,10 @@ class SSHSurveyor
                 trace("Warning: allowed IP #{ip} failed to authenticate (block [#{@block.pid}])")
                 next
             end
-            next if is_banned(ip)
+            if is_banned(ip)
+                trace("IP #{ip} is already banned, skipping analysis") unless production_mode?
+                next
+            end
 
             trace("Detected login attempt from #{ip} (block [#{@block.pid}])")
 
@@ -195,7 +203,7 @@ class SSHSurveyor
     # Add a line to current block if it has the same pid or start
     # a new block if it's different
     def build_block(line)
-        return if line.match(/refused connect/)
+#         return if line.match(/refused connect/)
 
         line.match(/sshd\[([0-9]+)\]: /) do |m|
             pid = m.captures.first.to_i
@@ -220,10 +228,9 @@ class SSHSurveyor
         IO.binread(@auth_log.file).split("\n").each { |line| build_block(line) }
     end
 
-    # Check if the size of the log file has changed. In this case it starts
-    # the analyze process from the missing piece of the file or the whole file
+    # Starts the analyze process from the missing piece of the file or the whole file
     # if the file is smaller, probably due to log rotation.
-    def check_log_size
+    def check_log_file
         size = File.size(@auth_log.file)
         size > @auth_log.size ? parse_chunk(size-@auth_log.size) : parse_file
         analyze_block unless @block.lines.empty?
@@ -236,7 +243,7 @@ class SSHSurveyor
         %w[INT TERM].map { |sig| Signal.trap(sig) { save_state; exit(0) } }
 
         while true
-            check_log_size unless File.size(@auth_log.file) == @auth_log.size
+            check_log_file unless File.size(@auth_log.file) == @auth_log.size
             sleep(@cfg['check_interval'])
         end
     end
