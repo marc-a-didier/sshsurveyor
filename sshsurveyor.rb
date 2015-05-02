@@ -61,7 +61,7 @@ class SSHSurveyor
         IO.foreach(hosts_deny) { |line| @banned << line.split('sshd:')[1].strip if line.match(/^sshd:/) }
 
         # Cleanup refused if any duplicates between banned and refused
-        @banned.each { |ip| @refused.delete_if { |k, v| k.match(ip) } }
+        @banned.each { |ip| @refused.delete_if { |k, v| k.start_with?(ip) } }
 
         # Keep track of allowed hosts, don't want to ban regular user cause (s)he messed the password...
         @allowed = []
@@ -124,16 +124,6 @@ class SSHSurveyor
         return @cfg['ban_prefix_size'] == 4 ? ip : ip.split('.')[0..@cfg['ban_prefix_size']-1].join('.')+'.'
     end
 
-    # Check if an ip is already banned or not
-    def is_banned(ip)
-        return @banned.detect { |banned| ip.match(banned) || ip_to_ban_size(ip).match(banned) }
-    end
-
-    # Check if an ip is in allowed hosts
-    def is_allowed(ip)
-        return @allowed.detect { |allowed| ip.match(allowed) || ip_to_ban_size(ip).match(allowed) }
-    end
-
     def production_mode?
         return @cfg['run_mode'] == 'prod'
     end
@@ -157,9 +147,6 @@ class SSHSurveyor
             count += line.match(/message repeated/) ? line.match(/repeated ([0-9]+) /).captures.first.to_i : 0
         end
 
-        # In a standard case there should be only the same ip in the block
-        ips = ips.compact.uniq
-
         # We were on a block that's not a threat
         if ips.empty?
             trace("No matching regex in block, exiting") unless production_mode?
@@ -167,16 +154,18 @@ class SSHSurveyor
             return
         end
 
+        # In a standard case there should be only the same ip in the block
+        ips = ips.uniq
         trace("Warning: more than 1 IP found in the same block!") if ips.size > 1
 
         # Parse each ip (normally only one)
         ips.map do |ip|
             # Skip if someone is doing stupid things on allowed host or already banned
-            if is_allowed(ip)
+            if @allowed.detect { |allowed| ip.start_with?(allowed) }
                 trace("Warning: allowed IP #{ip} failed to authenticate (block [#{@block.pid}])")
                 next
             end
-            if is_banned(ip)
+            if @banned.detect { |banned| ip.start_with?(banned) }
                 trace("IP #{ip} is already banned, skipping analysis") unless production_mode?
                 next
             end
