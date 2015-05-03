@@ -192,15 +192,17 @@ class SSHSurveyor
     # Add a line to current block if it has the same pid or start
     # a new block if it's different
     def build_block(line)
-#         return if line.match(/refused connect/)
-
-        line.match(/sshd\[([0-9]+)\]: /) do |m|
-            pid = m.captures.first.to_i
-            unless pid == @block.pid
-                analyze_block unless @block.lines.empty?
-                @block.pid = pid
+        if line.match(/refused connect/)
+            trace(line)
+        else
+            line.match(/sshd\[([0-9]+)\]: /) do |m|
+                pid = m.captures.first.to_i
+                unless pid == @block.pid
+                    analyze_block unless @block.lines.empty?
+                    @block.pid = pid
+                end
+                @block.lines << m.post_match
             end
-            @block.lines << m.post_match
         end
     end
 
