@@ -173,15 +173,16 @@ class SSHSurveyor
             trace("Detected login attempt from #{ip} (block [#{@block.pid}])")
 
             # Increment the offenses count
-            @refused[ip] ? @refused[ip] += count : @refused[ip] = count
-            trace("Updating refused[#{ip}], count is now #{@refused[ip]}")
+            bip = ip_to_ban_size(ip)
+            @refused[bip] ? @refused[bip] += count : @refused[bip] = count
+            trace("Updating refused[#{bip}], count is now #{@refused[bip]}")
 
             # If over 3 times, the ip is added to hosts.deny, saved in banned and removed from refused
-            if @refused[ip] >= @cfg['max_attempts']
-                trace("Adding #{ip} to banned -> deny #{ip_to_ban_size(ip)}")
-                File.open(hosts_deny, 'a') { |file| file.write("sshd: #{ip_to_ban_size(ip)}\n") }
-                @banned << ip_to_ban_size(ip)
-                @refused.delete(ip)
+            if @refused[bip] >= @cfg['max_attempts']
+                trace("Adding #{ip} to banned -> deny #{bip}")
+                File.open(hosts_deny, 'a') { |file| file.write("sshd: #{bip}\n") }
+                @banned << bip
+                @refused.delete(bip)
                 send_mail(ip) if @cfg['mail']['active']
             end
         end
