@@ -179,7 +179,7 @@ class SSHSurveyor
 
             # If over 3 times, the ip is added to hosts.deny, saved in banned and removed from refused
             if @refused[bip] >= @cfg['max_attempts']
-                trace("Adding #{ip} to banned -> deny #{bip}")
+                trace("Adding #{ip} to banned -> deny #{bip}, banned size is now #{@banned.size}")
                 File.open(hosts_deny, 'a') { |file| file.write("sshd: #{bip}\n") }
                 @banned << bip
                 @refused.delete(bip)
@@ -194,7 +194,7 @@ class SSHSurveyor
     # a new block if it's different
     def build_block(line)
         if line.match(/refused connect/)
-            trace(line)
+            trace(line) if @cfg['log_refused']
         else
             line.match(/sshd\[([0-9]+)\]: /) do |m|
                 pid = m.captures.first.to_i
