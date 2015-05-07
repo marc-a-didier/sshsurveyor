@@ -139,9 +139,12 @@ class SSHSurveyor
         # If a line contains a number of repeat the match count is incremented accordingly
         ips = []
         count = 1
-        @block.lines.map do |line|
+        @block.lines.each_with_index do |line, index|
             # The if modifier is necessary because we sometime get a domain name rather than the ip
-            line.match(AUTH_LOG_REGEX) { |match| ips << line.match(IP_REGEX)[0] if line.match(IP_REGEX) }
+            line.match(AUTH_LOG_REGEX) do |lmatch|
+                ips << line.match(IP_REGEX)[0] if line.match(IP_REGEX)
+                trace("Found match on '#{lmatch}' in line #{index}") unless production_mode?
+            end
 
             # Check if we have a repeat count for the offense
             count += line.match(/message repeated/) ? line.match(/repeated ([0-9]+) /).captures.first.to_i : 0
@@ -153,6 +156,8 @@ class SSHSurveyor
             @block.lines.clear
             return
         end
+
+        trace("Number of matches is #{ips.size}") unless production_mode?
 
         # In a standard case there should be only the same ip in the block
         ips = ips.uniq
