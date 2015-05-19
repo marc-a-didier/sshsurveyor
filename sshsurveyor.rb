@@ -110,7 +110,7 @@ class SSHSurveyor
 
     def send_mail(ip)
         msg = "Subject: Surveyor@home banned a new IP\n\n"
-        msg << "Surveyor banned IP #{ip} as #{ip_to_ban_size(ip)} in hosts.deny\n"
+        msg << "Surveyor banned IP #{ip} as #{ip_to_ban_size(ip)} in hosts.deny\nBanned size is now #{@banned.size}\n"
 
         smtp = Net::SMTP.new(@cfg['mail']['server'], @cfg['mail']['port'])
         smtp.enable_starttls
@@ -184,7 +184,7 @@ class SSHSurveyor
 
             # If over 3 times, the ip is added to hosts.deny, saved in banned and removed from refused
             if @refused[bip] >= @cfg['max_attempts']
-                trace("Adding #{ip} to banned -> deny #{bip}, banned size is now #{@banned.size}")
+                trace("Adding #{ip} to banned -> deny #{bip}, banned size is now #{@banned.size+1}")
                 File.open(hosts_deny, 'a') { |file| file.write("sshd: #{bip}\n") }
                 @banned << bip
                 @refused.delete(bip)
