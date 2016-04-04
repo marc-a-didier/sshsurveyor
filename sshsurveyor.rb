@@ -4,6 +4,7 @@ require 'logger'
 require 'net/smtp'
 require 'psych'
 require 'fileutils'
+require 'json'
 
 class SSHSurveyor
 
@@ -28,7 +29,10 @@ class SSHSurveyor
 
 
     def initialize
-        @cfg = Psych.load_file(File.join(ENV['HOME'], '.config/sshsurveyor/config.yml'))
+        @cfg = Psych.load_file(ARGV[0] || File.join(File.dirname(__FILE__), 'config.yml'))
+        if @cfg['mail'] && @cfg['mail']['credentials']
+            @cfg['mail'].merge!(JSON.parse(IO.read(@cfg['mail']['credentials'].sub(/^~/, ENV['HOME']))))
+        end
 
         # Init and check existence of system auth log. Abort if not found, no sense to continue
         @auth_log = AuthLogStruct.new(auth_log, 0)
@@ -81,7 +85,7 @@ class SSHSurveyor
     def auth_log
         return './auth.log' if @cfg['run_mode'] == 'full_debug'
 
-        AUTH_LOG_FILES.map { |log_file| return log_file if File.exists?(log_file) }
+        AUTH_LOG_FILES.each { |log_file| return log_file if File.exists?(log_file) }
 
         return nil
     end
@@ -114,8 +118,8 @@ class SSHSurveyor
 
         smtp = Net::SMTP.new(@cfg['mail']['server'], @cfg['mail']['port'])
         smtp.enable_starttls
-        smtp.start('', @cfg['mail']['recipient'], @cfg['mail']['passwd'], :login) do
-            smtp.send_message(msg, @cfg['mail']['sender'], @cfg['mail']['recipient'])
+        smtp.start('sshsurveyor', @cfg['mail']['recipients'].first, @cfg['mail']['passwd'], :login) do
+            smtp.send_message(msg, @cfg['mail']['sender'], @cfg['mail']['recipients'])
         end
     end
 
@@ -131,7 +135,7 @@ class SSHSurveyor
     def analyze_block
         unless production_mode?
             trace("Analyzing #{@block.lines.size} line(s) block for pid #{@block.pid}:")
-            @block.lines.map { |line| trace("  #{line}") }
+            @block.lines.each { |line| trace("  #{line}") }
         end
 
         # Parse each line of the block with each regex detecting a threat
@@ -164,7 +168,7 @@ class SSHSurveyor
         trace("Warning: more than 1 IP found in the same block!") if ips.size > 1
 
         # Parse each ip (normally only one)
-        ips.map do |ip|
+        ips.each do |ip|
             # Skip if someone is doing stupid things on allowed host or already banned
             if @allowed.detect { |allowed| ip.start_with?(allowed) }
                 trace("Warning: allowed IP #{ip} failed to authenticate (block [#{@block.pid}])")
@@ -237,7 +241,7 @@ class SSHSurveyor
     # Repeatedly check if the log file changed in size
     # If size has changed, it will trigger the log analysis
     def main_loop
-        %w[INT TERM].map { |sig| Signal.trap(sig) { save_state; exit(0) } }
+        %w[INT TERM].each { |sig| Signal.trap(sig) { save_state; exit(0) } }
 
         while true
             check_log_file unless File.size(@auth_log.file) == @auth_log.size

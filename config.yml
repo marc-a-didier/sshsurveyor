@@ -1,13 +1,10 @@
 ---
-run_mode: prod_debug
+run_mode: prod
 ban_prefix_size: 2
 max_attempts: 3
-check_interval: 10
-log_refused: true
+check_interval: 30
+log_refused: false
 mail:
-    server: smtp.gmail.com
-    port: 587
-    sender: surveyor@home
-    recipient: xxx
-    passwd: xxx
-    active: false
+    credentials: ~/.ssh/mail.config.json
+    from: surveyor@home
+    active: true
