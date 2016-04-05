@@ -29,7 +29,7 @@ class SSHSurveyor
 
 
     def initialize
-        @cfg = Psych.load_file(ARGV[0] || File.join(File.dirname(__FILE__), 'config.yml'))
+        @cfg = Psych.load_file(File.join(File.dirname(__FILE__), 'config.yml'))
         if @cfg['mail'] && @cfg['mail']['credentials']
             @cfg['mail'].merge!(JSON.parse(IO.read(@cfg['mail']['credentials'].sub(/^~/, ENV['HOME']))))
         end
@@ -55,8 +55,9 @@ class SSHSurveyor
         if File.exists?(state_file)
             @refused = Psych.load(IO.read(state_file))
             @auth_log.size = @refused.delete('size')
-            trace("Previous state reloaded:")
-            @refused.each { |k, v| trace("  IP #{k}: #{v} attempt(s)") }
+            trace("Previous state reloaded: #{@refused.size} entries")
+            # Way too much data to log...
+            # @refused.each { |k, v| trace("  IP #{k}: #{v} attempt(s)") }
         end
 
         # banned is initialized with the entries in hosts.deny and grows each time
